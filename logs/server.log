@@ -1,19 +1,12 @@
 INFO:     Will watch for changes in these directories: ['/home/workspace']
 INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-INFO:     Started reloader process [538] using StatReload
-INFO:     Started server process [540]
+INFO:     Started reloader process [631] using StatReload
+INFO:     Started server process [633]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
-INFO:     172.20.0.1:49150 - "HEAD / HTTP/1.1" 405 Method Not Allowed
-INFO:     172.20.0.1:44516 - "GET /api/networth?owner_type=user&owner_id=demo-user HTTP/1.1" 404 Not Found
-INFO:     172.20.0.1:44524 - "GET /api/income?owner_type=user&owner_id=demo-user HTTP/1.1" 404 Not Found
-INFO:     172.20.0.1:44530 - "GET /api/account-mapping?owner_type=user&owner_id=demo-user HTTP/1.1" 404 Not Found
-INFO:     172.20.0.1:44516 - "GET /api/networth?owner_type=user&owner_id=demo-user HTTP/1.1" 404 Not Found
-INFO:     172.20.0.1:44524 - "GET /api/income?owner_type=user&owner_id=demo-user HTTP/1.1" 404 Not Found
-INFO:     172.20.0.1:44530 - "GET /api/account-mapping?owner_type=user&owner_id=demo-user HTTP/1.1" 404 Not Found
-INFO:     172.20.0.1:44516 - "GET /api/expenses?owner_type=user&owner_id=demo-user HTTP/1.1" 404 Not Found
-INFO:     172.20.0.1:44516 - "GET /api/expenses?owner_type=user&owner_id=demo-user HTTP/1.1" 404 Not Found
-INFO:     172.20.0.1:44498 - "GET /api/gamification/profile?user_id=demo-user HTTP/1.1" 500 Internal Server Error
+INFO:     172.20.0.1:34778 - "HEAD / HTTP/1.1" 405 Method Not Allowed
+INFO:     172.20.0.1:34800 - "GET /api/cdr/accounts HTTP/1.1" 200 OK
+INFO:     172.20.0.1:34792 - "GET /api/gamification/profile?user_id=demo-user HTTP/1.1" 500 Internal Server Error
 ERROR:    Exception in ASGI application
 Traceback (most recent call last):
   File "/usr/local/lib/python3.13/site-packages/fastapi/encoders.py", line 322, in jsonable_encoder
@@ -84,9 +77,8 @@ Traceback (most recent call last):
   File "/usr/local/lib/python3.13/site-packages/fastapi/encoders.py", line 330, in jsonable_encoder
     raise ValueError(errors) from e
 ValueError: [TypeError("'ObjectId' object is not iterable"), TypeError('vars() argument must have __dict__ attribute')]
-INFO:     172.20.0.1:44506 - "GET /api/cdr/accounts HTTP/1.1" 200 OK
-INFO:     172.20.0.1:44534 - "GET /api/networth?owner_type=user&owner_id=demo-user HTTP/1.1" 404 Not Found
-INFO:     172.20.0.1:44530 - "GET /api/gamification/profile?user_id=demo-user HTTP/1.1" 500 Internal Server Error
+INFO:     172.20.0.1:34836 - "GET /api/account-mapping?owner_type=user&owner_id=demo-user HTTP/1.1" 200 OK
+INFO:     172.20.0.1:34800 - "GET /api/gamification/profile?user_id=demo-user HTTP/1.1" 500 Internal Server Error
 ERROR:    Exception in ASGI application
 Traceback (most recent call last):
   File "/usr/local/lib/python3.13/site-packages/fastapi/encoders.py", line 322, in jsonable_encoder
@@ -157,12 +149,21 @@ Traceback (most recent call last):
   File "/usr/local/lib/python3.13/site-packages/fastapi/encoders.py", line 330, in jsonable_encoder
     raise ValueError(errors) from e
 ValueError: [TypeError("'ObjectId' object is not iterable"), TypeError('vars() argument must have __dict__ attribute')]
-INFO:     172.20.0.1:44524 - "GET /api/cdr/accounts HTTP/1.1" 200 OK
-INFO:     172.20.0.1:44534 - "GET /api/income?owner_type=user&owner_id=demo-user HTTP/1.1" 404 Not Found
-INFO:     172.20.0.1:44524 - "GET /api/networth?owner_type=user&owner_id=demo-user HTTP/1.1" 404 Not Found
-INFO:     172.20.0.1:44556 - "GET /api/account-mapping?owner_type=user&owner_id=demo-user HTTP/1.1" 404 Not Found
-INFO:     172.20.0.1:44524 - "GET /api/income?owner_type=user&owner_id=demo-user HTTP/1.1" 404 Not Found
-INFO:     172.20.0.1:44548 - "GET /api/gamification/profile?user_id=demo-user HTTP/1.1" 500 Internal Server Error
+INFO:     172.20.0.1:34836 - "GET /api/cdr/accounts HTTP/1.1" 200 OK
+INFO:     172.20.0.1:34810 - "GET /api/income?owner_type=user&owner_id=demo-user HTTP/1.1" 200 OK
+INFO:     172.20.0.1:34836 - "GET /api/cdr/accounts HTTP/1.1" 200 OK
+INFO:     172.20.0.1:34822 - "GET /api/networth?owner_type=user&owner_id=demo-user HTTP/1.1" 200 OK
+INFO:     172.20.0.1:34848 - "GET /api/account-mapping?owner_type=user&owner_id=demo-user HTTP/1.1" 200 OK
+INFO:     172.20.0.1:34810 - "GET /api/income?owner_type=user&owner_id=demo-user HTTP/1.1" 200 OK
+INFO:     172.20.0.1:34842 - "GET /api/expenses?owner_type=user&owner_id=demo-user HTTP/1.1" 200 OK
+INFO:     172.20.0.1:34822 - "GET /api/networth?owner_type=user&owner_id=demo-user HTTP/1.1" 200 OK
+INFO:     172.20.0.1:34836 - "GET /api/cdr/accounts HTTP/1.1" 200 OK
+INFO:     172.20.0.1:34842 - "GET /api/expenses?owner_type=user&owner_id=demo-user HTTP/1.1" 200 OK
+INFO:     172.20.0.1:34836 - "GET /api/cdr/accounts HTTP/1.1" 200 OK
+INFO:     172.20.0.1:34836 - "GET /api/cdr/accounts HTTP/1.1" 200 OK
+INFO:     172.20.0.1:34836 - "GET /api/cdr/accounts HTTP/1.1" 200 OK
+INFO:     172.20.0.1:34836 - "GET /api/cdr/accounts HTTP/1.1" 200 OK
+INFO:     172.20.0.1:34856 - "GET /api/gamification/profile?user_id=demo-user HTTP/1.1" 500 Internal Server Error
 ERROR:    Exception in ASGI application
 Traceback (most recent call last):
   File "/usr/local/lib/python3.13/site-packages/fastapi/encoders.py", line 322, in jsonable_encoder
@@ -233,13 +234,90 @@ Traceback (most recent call last):
   File "/usr/local/lib/python3.13/site-packages/fastapi/encoders.py", line 330, in jsonable_encoder
     raise ValueError(errors) from e
 ValueError: [TypeError("'ObjectId' object is not iterable"), TypeError('vars() argument must have __dict__ attribute')]
-INFO:     172.20.0.1:44534 - "GET /api/cdr/accounts HTTP/1.1" 200 OK
-INFO:     172.20.0.1:44572 - "GET /api/expenses?owner_type=user&owner_id=demo-user HTTP/1.1" 404 Not Found
-INFO:     172.20.0.1:44556 - "GET /api/account-mapping?owner_type=user&owner_id=demo-user HTTP/1.1" 404 Not Found
-INFO:     172.20.0.1:44572 - "GET /api/expenses?owner_type=user&owner_id=demo-user HTTP/1.1" 404 Not Found
-INFO:     172.20.0.1:44534 - "GET /api/cdr/accounts HTTP/1.1" 200 OK
-INFO:     172.20.0.1:44534 - "GET /api/cdr/accounts HTTP/1.1" 200 OK
-INFO:     172.20.0.1:44534 - "GET /api/cdr/accounts HTTP/1.1" 200 OK
-INFO:     172.20.0.1:44534 - "GET /api/cdr/accounts HTTP/1.1" 200 OK
-INFO:     172.20.0.1:44534 - "GET /api/cdr/accounts HTTP/1.1" 200 OK
-INFO:     172.20.0.1:44534 - "GET /api/cdr/accounts HTTP/1.1" 200 OK
+INFO:     172.20.0.1:36508 - "GET /api/networth?owner_type=user&owner_id=demo-user HTTP/1.1" 200 OK
+INFO:     172.20.0.1:36510 - "GET /api/income?owner_type=user&owner_id=demo-user HTTP/1.1" 200 OK
+INFO:     172.20.0.1:36528 - "GET /api/gamification/profile?user_id=demo-user HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.13/site-packages/fastapi/encoders.py", line 322, in jsonable_encoder
+    data = dict(obj)
+TypeError: 'ObjectId' object is not iterable
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.13/site-packages/fastapi/encoders.py", line 327, in jsonable_encoder
+    data = vars(obj)
+TypeError: vars() argument must have __dict__ attribute
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.13/site-packages/uvicorn/protocols/http/h11_impl.py", line 408, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        self.scope, self.receive, self.send
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/usr/local/lib/python3.13/site-packages/uvicorn/middleware/proxy_headers.py", line 84, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/site-packages/fastapi/applications.py", line 1106, in __call__
+    await super().__call__(scope, receive, send)
+  File "/usr/local/lib/python3.13/site-packages/starlette/applications.py", line 122, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/usr/local/lib/python3.13/site-packages/starlette/middleware/errors.py", line 184, in __call__
+    raise exc
+  File "/usr/local/lib/python3.13/site-packages/starlette/middleware/errors.py", line 162, in __call__
+    await self.app(scope, receive, _send)
+  File "/usr/local/lib/python3.13/site-packages/starlette/middleware/cors.py", line 91, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/usr/local/lib/python3.13/site-packages/starlette/middleware/cors.py", line 146, in simple_response
+    await self.app(scope, receive, send)
+  File "/usr/local/lib/python3.13/site-packages/starlette/middleware/exceptions.py", line 79, in __call__
+    raise exc
+  File "/usr/local/lib/python3.13/site-packages/starlette/middleware/exceptions.py", line 68, in __call__
+    await self.app(scope, receive, sender)
+  File "/usr/local/lib/python3.13/site-packages/fastapi/middleware/asyncexitstack.py", line 20, in __call__
+    raise e
+  File "/usr/local/lib/python3.13/site-packages/fastapi/middleware/asyncexitstack.py", line 17, in __call__
+    await self.app(scope, receive, send)
+  File "/usr/local/lib/python3.13/site-packages/starlette/routing.py", line 718, in __call__
+    await route.handle(scope, receive, send)
+  File "/usr/local/lib/python3.13/site-packages/starlette/routing.py", line 276, in handle
+    await self.app(scope, receive, send)
+  File "/usr/local/lib/python3.13/site-packages/starlette/routing.py", line 66, in app
+    response = await func(request)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/site-packages/fastapi/routing.py", line 292, in app
+    content = await serialize_response(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+    )
+    ^
+  File "/usr/local/lib/python3.13/site-packages/fastapi/routing.py", line 180, in serialize_response
+    return jsonable_encoder(response_content)
+  File "/usr/local/lib/python3.13/site-packages/fastapi/encoders.py", line 287, in jsonable_encoder
+    encoded_value = jsonable_encoder(
+        value,
+    ...<4 lines>...
+        sqlalchemy_safe=sqlalchemy_safe,
+    )
+  File "/usr/local/lib/python3.13/site-packages/fastapi/encoders.py", line 330, in jsonable_encoder
+    raise ValueError(errors) from e
+ValueError: [TypeError("'ObjectId' object is not iterable"), TypeError('vars() argument must have __dict__ attribute')]
+INFO:     172.20.0.1:36516 - "GET /api/account-mapping?owner_type=user&owner_id=demo-user HTTP/1.1" 200 OK
+INFO:     172.20.0.1:36508 - "GET /api/cdr/accounts HTTP/1.1" 200 OK
+INFO:     172.20.0.1:36544 - "GET /api/networth?owner_type=user&owner_id=demo-user HTTP/1.1" 200 OK
+INFO:     172.20.0.1:36554 - "GET /api/expenses?owner_type=user&owner_id=demo-user HTTP/1.1" 200 OK
+INFO:     172.20.0.1:36510 - "GET /api/income?owner_type=user&owner_id=demo-user HTTP/1.1" 200 OK
+INFO:     172.20.0.1:36510 - "GET /api/expenses?owner_type=user&owner_id=demo-user HTTP/1.1" 200 OK
+INFO:     172.20.0.1:36508 - "GET /api/cdr/accounts HTTP/1.1" 200 OK
+INFO:     172.20.0.1:36508 - "GET /api/cdr/accounts HTTP/1.1" 200 OK
+INFO:     172.20.0.1:36516 - "GET /api/account-mapping?owner_type=user&owner_id=demo-user HTTP/1.1" 200 OK
+INFO:     172.20.0.1:36508 - "GET /api/cdr/accounts HTTP/1.1" 200 OK
+INFO:     172.20.0.1:36508 - "GET /api/cdr/accounts HTTP/1.1" 200 OK
+INFO:     172.20.0.1:36508 - "GET /api/cdr/accounts HTTP/1.1" 200 OK
+INFO:     172.20.0.1:36508 - "GET /api/cdr/accounts HTTP/1.1" 200 OK
+INFO:     172.20.0.1:36508 - "GET /api/cdr/accounts HTTP/1.1" 200 OK

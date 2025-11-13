@@ -1,10 +1,12 @@
 import os
 import random
 import string
+from datetime import datetime, timedelta
+from typing import List, Literal, Optional, Dict
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Literal, Optional, Dict
+from pydantic import BaseModel, Field
 
 from database import db, create_document, get_documents
 from schemas import Scenario, Strategy, BankConnection, BankAccount, BankTransaction, GamificationProfile
@@ -20,20 +22,36 @@ app.add_middleware(
 )
 
 
+# -------------------- Helpers --------------------
 class CashflowInput(BaseModel):
     income_monthly: float
     expenses_monthly: float
     savings_rate_target: Optional[float] = None  # 0-1
 
+
 class TaxInput(BaseModel):
     entity: Literal["individual", "company", "sole_trader"]
     taxable_income: float
 
+
 class SuperInput(BaseModel):
     salary: float
-    concessional_contrib: float = 0.0  # pre-tax contributions
+    concessional_contrib: float = 0.0
 
 
+FREQ_TO_MONTH = {
+    "weekly": 52 / 12,
+    "fortnightly": 26 / 12,
+    "monthly": 1,
+    "annual": 1 / 12,
+}
+
+
+def to_monthly(amount: float, frequency: str) -> float:
+    return float(amount) * FREQ_TO_MONTH.get(frequency, 1)
+
+
+# -------------------- Root & test --------------------
 @app.get("/")
 def read_root():
     return {"message": "Finance Optimizer AU Backend"}
@@ -65,7 +83,7 @@ def test_database():
     return response
 
 
-# --- Gamification helpers ---
+# -------------------- Gamification helpers --------------------
 
 def _get_latest_profile() -> Dict[str, object]:
     try:
@@ -74,12 +92,10 @@ def _get_latest_profile() -> Dict[str, object]:
             return items[0]
     except Exception:
         pass
-    # default profile
     return {"xp": 0, "level": 1, "badges": [], "streak_days": 0, "quests": []}
 
 
 def _compute_level(xp: int) -> int:
-    # simple level curve: every 200 XP = +1 level
     return max(1, 1 + xp // 200)
 
 
@@ -88,14 +104,19 @@ def _award_xp(amount: int, reason: str) -> Dict[str, object]:
     xp = int(current.get("xp", 0)) + amount
     level = _compute_level(xp)
     badges = list(current.get("badges", []))
-    # simple badge rules
     if reason == "link_bank" and "Banked Up" not in badges:
         badges.append("Banked Up")
     if reason == "save_scenario" and "Planner" not in badges:
         badges.append("Planner")
     if reason == "save_strategy" and "Strategist" not in badges:
         badges.append("Strategist")
-    profile = GamificationProfile(xp=xp, level=level, badges=badges, streak_days=current.get("streak_days", 0), quests=current.get("quests", []))
+    if reason == "apply_strategy" and "Executor" not in badges:
+        badges.append("Executor")
+    if reason == "create_profile" and "Ready Player" not in badges:
+        badges.append("Ready Player")
+    profile = GamificationProfile(
+        xp=xp, level=level, badges=badges, streak_days=current.get("streak_days", 0), quests=current.get("quests", [])
+    )
     try:
         create_document("gamificationprofile", profile)
     except Exception:
@@ -103,17 +124,15 @@ def _award_xp(amount: int, reason: str) -> Dict[str, object]:
     return profile.model_dump()
 
 
-# --- AU Tax Calculators (2024-25 approximations) ---
-# Note: Simplified rates; for guidance only
+# -------------------- Calculators --------------------
 
 def calc_individual_tax_2024_25(income: float) -> float:
-    # Resident tax rates (AUD) 2024-25, simplified incl. Medicare levy at 2% applied at end
     brackets = [
         (0, 18200, 0.0, 0),
-        (18200, 45000, 0.16, 0),  # 16% over 18,200
-        (45000, 135000, 0.30, 0), # 30% over 45,000
-        (135000, 190000, 0.37, 0),# 37% over 135,000
-        (190000, float('inf'), 0.45, 0) # 45% over 190,000
+        (18200, 45000, 0.16, 0),
+        (45000, 135000, 0.30, 0),
+        (135000, 190000, 0.37, 0),
+        (190000, float('inf'), 0.45, 0)
     ]
     tax = 0.0
     for low, high, rate, _ in brackets:
@@ -122,12 +141,11 @@ def calc_individual_tax_2024_25(income: float) -> float:
             tax += taxable_at_rate * rate
         else:
             break
-    medicare = income * 0.02 if income > 30000 else 0  # rough threshold
+    medicare = income * 0.02 if income > 30000 else 0
     return max(tax + medicare, 0.0)
 
 
 def calc_company_tax(income: float) -> float:
-    # Base company tax rate (most base rate entities) ~25%
     return max(income * 0.25, 0.0)
 
 
@@ -152,7 +170,9 @@ def calculate_tax(payload: TaxInput):
 @app.post("/api/cashflow")
 def calculate_cashflow(payload: CashflowInput):
     surplus = payload.income_monthly - payload.expenses_monthly
-    target = payload.savings_rate_target if payload.savings_rate_target is not None else (surplus / payload.income_monthly if payload.income_monthly > 0 else 0)
+    target = payload.savings_rate_target if payload.savings_rate_target is not None else (
+        surplus / payload.income_monthly if payload.income_monthly > 0 else 0
+    )
     target_amount = payload.income_monthly * max(min(target, 1), 0)
     return {
         "surplus_monthly": round(surplus, 2),
@@ -163,7 +183,6 @@ def calculate_cashflow(payload: CashflowInput):
 
 @app.post("/api/super")
 def calculate_super(payload: SuperInput):
-    # Superannuation guarantee 2024-25: 11.5%
     sg_rate = 0.115
     sg = payload.salary * sg_rate
     concessional_cap = 27500.0
@@ -175,7 +194,7 @@ def calculate_super(payload: SuperInput):
     }
 
 
-# Scenario persistence endpoints using MongoDB via helper functions
+# -------------------- Scenario + Strategies (existing) --------------------
 class SaveScenarioInput(BaseModel):
     name: str
     scenario_type: Literal["individual", "business"]
@@ -195,7 +214,6 @@ def save_scenario(payload: SaveScenarioInput):
     )
     try:
         inserted_id = create_document("scenario", scenario)
-        # award XP for saving scenario
         _award_xp(50, "save_scenario")
         return {"id": inserted_id}
     except Exception as e:
@@ -206,7 +224,6 @@ def save_scenario(payload: SaveScenarioInput):
 def list_scenarios(limit: int = 20):
     try:
         docs = get_documents("scenario", {}, limit)
-        # Convert ObjectId to string for JSON
         for d in docs:
             if "_id" in d:
                 d["id"] = str(d.pop("_id"))
@@ -214,8 +231,6 @@ def list_scenarios(limit: int = 20):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-# -------- Strategies: Prebuilt + AI-like Generator (rule-based) --------
 
 PREBUILT_STRATEGIES: List[Dict] = [
     {
@@ -257,6 +272,7 @@ PREBUILT_STRATEGIES: List[Dict] = [
     },
 ]
 
+
 class GenerateStrategyInput(BaseModel):
     scenario_type: Literal["individual", "business"]
     inputs: Dict[str, object] = {}
@@ -265,132 +281,36 @@ class GenerateStrategyInput(BaseModel):
     scenario_id: Optional[str] = None
 
 
-def _generate_individual_strategy(inputs: Dict[str, object], results: Dict[str, object]) -> Dict:
-    income = float(inputs.get("incomeMonthly") or 0)
-    expenses = float(inputs.get("expensesMonthly") or 0)
-    savings_rate_target = float(inputs.get("savingsRateTarget") or 0)
-    salary = float(inputs.get("salary") or 0)
-    concessional = float(inputs.get("concessional") or 0)
-
-    surplus = (results.get("cashflowResult") or {}).get("surplus_monthly")
-    eff_rate = (results.get("taxResult") or {}).get("effective_rate")
-    sg = (results.get("superResult") or {}).get("sg_employer")
-    cap = (results.get("superResult") or {}).get("concessional_cap", 27500)
-
-    steps = []
-    assumptions = {
-        "income_monthly": income,
-        "expenses_monthly": expenses,
-        "current_savings_rate_target": savings_rate_target,
-        "salary": salary,
-        "concessional": concessional,
-        "employer_sg": sg,
-        "concessional_cap": cap,
-        "effective_tax_rate": eff_rate,
-    }
-
-    # Savings optimization
-    if income > 0:
-        current_rate = (surplus / income) if (surplus is not None and income > 0) else savings_rate_target
-        desired = max(current_rate, savings_rate_target, 0.20)
-        bump = 0.05 if desired < 0.25 else 0.02
-        steps.append(f"Increase automated savings by {(bump*100):.0f}% of income until you reach {(max(desired, current_rate)+bump)*100:.0f}% savings rate.")
-
-    # Expense cut
-    if expenses > 0:
-        steps.append("Identify top 3 expense categories and cap them at 80% of the current level for 90 days.")
-
-    # Superannuation salary sacrifice
-    if salary > 0:
-        total_concessional = concessional + (sg or 0)
-        remaining = max(cap - total_concessional, 0)
-        if remaining > 0:
-            steps.append(f"Salary sacrifice approximately ${min(remaining, 10000):,.0f} before 30 June to stay within the $27,500 concessional cap.")
-        else:
-            steps.append("You are at/over the concessional cap; avoid extra pre-tax contributions this year.")
-
-    # Tax withholding tune
-    if eff_rate is not None and eff_rate > 0.20:
-        steps.append("Review PAYG withholding settings to reduce bill shock; consider quarterly check-ins.")
-
-    estimated_impact = {
-        "savings_rate": 0.03,
-        "annual_tax": - (results.get("taxResult") or {}).get("tax", 0) * 0.02,
-    }
-
-    return {
-        "title": "Personal Optimisation Plan",
-        "audience": "individual",
-        "kind": "generated",
-        "description": "Personalised steps based on your income, spending and super setup.",
-        "steps": steps,
-        "assumptions": assumptions,
-        "estimated_impact": estimated_impact,
-    }
-
-
-def _generate_business_strategy(inputs: Dict[str, object], results: Dict[str, object]) -> Dict:
-    income = float(inputs.get("incomeMonthly") or 0)
-    expenses = float(inputs.get("expensesMonthly") or 0)
-    steps = [
-        "Negotiate supplier contracts; target 5–10% reduction on top 5 costs.",
-        "Shift fixed costs to variable where possible to improve resilience.",
-        "Tighten AR collections; aim for DSO < 35 days.",
-    ]
-    if income and expenses:
-        margin = (income - expenses) / income
-        if margin < 0.15:
-            steps.append("Introduce weekly spend reviews and require approvals >$1,000.")
-    return {
-        "title": "Business Cashflow Tune-Up",
-        "audience": "business",
-        "kind": "generated",
-        "description": "Practical actions to widen margins and improve cash conversion.",
-        "steps": steps,
-        "assumptions": {"income_monthly": income, "expenses_monthly": expenses},
-        "estimated_impact": {"operating_margin": 0.02},
-    }
-
-
 @app.get("/api/strategies/prebuilt")
 def get_prebuilt_strategies(audience: Optional[Literal["individual", "business"]] = None):
     items = [s for s in PREBUILT_STRATEGIES if (audience is None or s["audience"] == audience)]
     return items
 
 
-@app.post("/api/strategies/generate")
-def generate_strategy(payload: GenerateStrategyInput):
-    if payload.scenario_type == "individual":
-        strat = _generate_individual_strategy(payload.inputs or {}, payload.results or {})
-    else:
-        strat = _generate_business_strategy(payload.inputs or {}, payload.results or {})
-
-    # Attach optional info
-    if payload.title:
-        strat["title"] = payload.title
-    if payload.scenario_id:
-        strat["scenario_id"] = payload.scenario_id
-
-    # award small XP for generating
-    _award_xp(10, "generate_strategy")
-
-    return strat
-
-
 class SaveStrategyInput(BaseModel):
     title: str
     audience: Literal["individual", "business"]
-    kind: Literal["prebuilt", "generated"]
+    kind: Literal["prebuilt", "generated", "custom"] = "custom"
     description: Optional[str] = None
     steps: List[str] = []
     assumptions: Dict[str, object] = {}
     estimated_impact: Dict[str, float] = {}
     scenario_id: Optional[str] = None
+    allocations: List[Dict[str, object]] = Field(default_factory=list)
 
 
 @app.post("/api/strategies")
 def save_strategy(payload: SaveStrategyInput):
-    doc = Strategy(**payload.model_dump())
+    doc = Strategy(
+        title=payload.title,
+        audience=payload.audience,
+        kind=payload.kind,
+        description=payload.description,
+        steps=payload.steps,
+        assumptions={**payload.assumptions, "allocations": payload.allocations},
+        estimated_impact=payload.estimated_impact,
+        scenario_id=payload.scenario_id,
+    )
     try:
         inserted_id = create_document("strategy", doc)
         _award_xp(75, "save_strategy")
@@ -414,8 +334,458 @@ def list_strategies(limit: int = 50, audience: Optional[Literal["individual", "b
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# --------- CDR mock integration (link bank accounts) ---------
+# -------------------- Profiles --------------------
+class UserProfile(BaseModel):
+    user_id: str
+    name: str
+    occupation: Optional[str] = None
+    tax_residency: Literal["resident", "non_resident"] = "resident"
+    income_frequency: Literal["weekly", "fortnightly", "monthly", "annual"] = "monthly"
+    master_salary_account_id: Optional[str] = None
 
+
+class BusinessProfile(BaseModel):
+    business_id: str
+    name: str
+    abn_acn: Optional[str] = None
+    industry: Optional[str] = None
+    tax_residency: Literal["resident", "non_resident"] = "resident"
+    master_income_account_id: Optional[str] = None
+
+
+@app.post("/api/profile/user")
+def save_user_profile(payload: UserProfile):
+    try:
+        inserted = create_document("userprofile", payload)
+        _award_xp(40, "create_profile")
+        return {"id": inserted}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/profile/user")
+def get_user_profiles(limit: int = 10):
+    try:
+        docs = get_documents("userprofile", {}, limit)
+        for d in docs:
+            if "_id" in d:
+                d["id"] = str(d.pop("_id"))
+        return {"items": docs}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/profile/business")
+def save_business_profile(payload: BusinessProfile):
+    try:
+        inserted = create_document("businessprofile", payload)
+        _award_xp(40, "create_profile")
+        return {"id": inserted}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/profile/business")
+def get_business_profiles(limit: int = 10):
+    try:
+        docs = get_documents("businessprofile", {}, limit)
+        for d in docs:
+            if "_id" in d:
+                d["id"] = str(d.pop("_id"))
+        return {"items": docs}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# -------------------- Income & Expenses --------------------
+class IncomeEntry(BaseModel):
+    owner_type: Literal["user", "business"]
+    owner_id: str
+    source: str
+    amount: float
+    frequency: Literal["weekly", "fortnightly", "monthly", "annual"] = "monthly"
+
+
+class ExpenseEntry(BaseModel):
+    owner_type: Literal["user", "business"]
+    owner_id: str
+    name: str
+    amount: float
+    frequency: Literal["weekly", "fortnightly", "monthly", "annual"] = "monthly"
+    category: Optional[str] = None
+    deductible: bool = False
+
+
+@app.post("/api/income")
+def add_income(payload: IncomeEntry):
+    try:
+        inserted = create_document("incomeentry", payload)
+        return {"id": inserted}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/income")
+def list_income(owner_type: Literal["user", "business"], owner_id: str, limit: int = 50):
+    try:
+        docs = get_documents("incomeentry", {"owner_type": owner_type, "owner_id": owner_id}, limit)
+        for d in docs:
+            if "_id" in d:
+                d["id"] = str(d.pop("_id"))
+        total_monthly = sum(to_monthly(d.get("amount", 0), d.get("frequency", "monthly")) for d in docs)
+        return {"items": docs, "total_monthly": round(total_monthly, 2)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/expenses")
+def add_expense(payload: ExpenseEntry):
+    try:
+        inserted = create_document("expenseentry", payload)
+        return {"id": inserted}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/expenses")
+def list_expenses(owner_type: Literal["user", "business"], owner_id: str, limit: int = 100):
+    try:
+        docs = get_documents("expenseentry", {"owner_type": owner_type, "owner_id": owner_id}, limit)
+        for d in docs:
+            if "_id" in d:
+                d["id"] = str(d.pop("_id"))
+        total_monthly = sum(to_monthly(d.get("amount", 0), d.get("frequency", "monthly")) for d in docs)
+        return {"items": docs, "total_monthly": round(total_monthly, 2)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# -------------------- Deductions (AU) --------------------
+AU_DEDUCTIONS_BASE = [
+    "Home office equipment (depreciating assets)",
+    "Work-related travel (km or logbook method)",
+    "Professional memberships and subscriptions",
+    "Self-education and training directly related to work",
+    "Phone and internet for work usage proportion",
+]
+
+INDUSTRY_SEEDS: Dict[str, List[str]] = {
+    "horeca": ["Uniforms and laundering", "Food safety certifications", "Work footwear"],
+    "speciality stores": ["Point-of-sale software", "Packaging for products", "In-store fixtures"],
+    "it consulting": ["Cloud services for client delivery", "Software licences", "Laptop and accessories"],
+    "healthcare": ["CPD courses", "Registration renewal", "Medical equipment and consumables"],
+}
+
+
+class DeductionCatalogItem(BaseModel):
+    title: str
+    occupation: Optional[str] = None
+    industry: Optional[str] = None
+
+
+@app.get("/api/deductions")
+def get_deductions(occupation: Optional[str] = None, industry: Optional[str] = None):
+    suggestions = list(AU_DEDUCTIONS_BASE)
+    if industry and industry in INDUSTRY_SEEDS:
+        suggestions.extend(INDUSTRY_SEEDS[industry])
+    try:
+        query: Dict[str, object] = {}
+        if occupation:
+            query["occupation"] = occupation
+        if industry:
+            query["industry"] = industry
+        cat = get_documents("deductioncatalogitem", query, 100)
+        suggestions.extend([c.get("title") for c in cat])
+    except Exception:
+        pass
+    # Industry insights demo
+    insights = [{"title": f"{industry.title() if industry else 'General'} cost-saving ideas", "type": "insight"}]
+    return {"suggestions": suggestions, "insights": insights}
+
+
+@app.post("/api/deductions/catalog")
+def add_to_deduction_catalog(item: DeductionCatalogItem):
+    try:
+        inserted = create_document("deductioncatalogitem", item)
+        return {"id": inserted}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# -------------------- Account mappings --------------------
+class AccountMapping(BaseModel):
+    owner_type: Literal["user", "business"]
+    owner_id: str
+    bucket: str
+    bank_account_id: str
+
+
+@app.post("/api/account-mapping")
+def save_account_mapping(payload: AccountMapping):
+    try:
+        inserted = create_document("accountmapping", payload)
+        return {"id": inserted}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/account-mapping")
+def list_account_mappings(owner_type: Literal["user", "business"], owner_id: str, limit: int = 100):
+    try:
+        docs = get_documents("accountmapping", {"owner_type": owner_type, "owner_id": owner_id}, limit)
+        for d in docs:
+            if "_id" in d:
+                d["id"] = str(d.pop("_id"))
+        return {"items": docs}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# -------------------- Strategy simulate/apply --------------------
+class StrategySimulateRequest(BaseModel):
+    owner_type: Literal["user", "business"]
+    owner_id: str
+    strategy_id: str  # using preset name for demo
+
+
+class StrategyApplyRequest(StrategySimulateRequest):
+    sync_frequency: Literal["weekly", "fortnightly", "monthly"] = "monthly"
+
+
+DEFAULT_PRESETS: Dict[str, List[Dict[str, object]]] = {
+    "Debt Free Fast": [
+        {"bucket": "Debt", "type": "percent", "value": 40},
+        {"bucket": "Essentials", "type": "percent", "value": 40},
+        {"bucket": "Emergency", "type": "percent", "value": 10},
+        {"bucket": "Investments", "type": "percent", "value": 10},
+    ],
+    "FIRE": [
+        {"bucket": "Investments", "type": "percent", "value": 50},
+        {"bucket": "Essentials", "type": "percent", "value": 30},
+        {"bucket": "Emergency", "type": "percent", "value": 10},
+        {"bucket": "Discretionary", "type": "percent", "value": 10},
+    ],
+    "Aggressive Investment": [
+        {"bucket": "Investments", "type": "percent", "value": 60},
+        {"bucket": "Essentials", "type": "percent", "value": 25},
+        {"bucket": "Emergency", "type": "percent", "value": 5},
+        {"bucket": "Discretionary", "type": "percent", "value": 10},
+    ],
+    "Balanced": [
+        {"bucket": "Investments", "type": "percent", "value": 30},
+        {"bucket": "Essentials", "type": "percent", "value": 45},
+        {"bucket": "Emergency", "type": "percent", "value": 10},
+        {"bucket": "Discretionary", "type": "percent", "value": 15},
+    ],
+}
+
+
+def _load_allocations_for_strategy(name: str) -> List[Dict[str, object]]:
+    # Try custom strategies first
+    try:
+        docs = get_documents("strategy", {"title": name}, 1)
+        if docs:
+            allocs = ((docs[0].get("assumptions") or {}).get("allocations") or [])
+            if allocs:
+                return allocs
+    except Exception:
+        pass
+    return DEFAULT_PRESETS.get(name, DEFAULT_PRESETS["Balanced"])[:]
+
+
+def _monthly_income_expenses(owner_type: str, owner_id: str) -> Dict[str, float]:
+    incomes = get_documents("incomeentry", {"owner_type": owner_type, "owner_id": owner_id}, 1000)
+    expenses = get_documents("expenseentry", {"owner_type": owner_type, "owner_id": owner_id}, 1000)
+    inc_m = sum(to_monthly(i.get("amount", 0), i.get("frequency", "monthly")) for i in incomes)
+    exp_m = sum(to_monthly(e.get("amount", 0), e.get("frequency", "monthly")) for e in expenses)
+    return {"income_monthly": inc_m, "expenses_monthly": exp_m}
+
+
+def _next_run_date(freq: str) -> str:
+    today = datetime.utcnow().date()
+    if freq == "weekly":
+        d = today + timedelta(days=7)
+    elif freq == "fortnightly":
+        d = today + timedelta(days=14)
+    else:
+        # next month same day
+        month = today.month + 1
+        year = today.year + (1 if month > 12 else 0)
+        month = 1 if month > 12 else month
+        day = min(today.day, 28)
+        d = datetime(year, month, day).date()
+    return d.isoformat()
+
+
+@app.post("/api/strategy/simulate")
+def strategy_simulate(payload: StrategySimulateRequest):
+    try:
+        allocs = _load_allocations_for_strategy(payload.strategy_id)
+        totals = _monthly_income_expenses(payload.owner_type, payload.owner_id)
+        surplus = max(totals["income_monthly"] - totals["expenses_monthly"], 0)
+        breakdown = []
+        remaining = surplus
+        fixed_sum = sum(a.get("value", 0) for a in allocs if a.get("type") == "fixed")
+        for a in allocs:
+            if a.get("type") == "fixed":
+                amt = min(remaining, float(a.get("value", 0)))
+                breakdown.append({"bucket": a.get("bucket"), "amount": round(amt, 2)})
+                remaining -= amt
+        percent_sum = sum(a.get("value", 0) for a in allocs if a.get("type") == "percent")
+        for a in allocs:
+            if a.get("type") == "percent" and percent_sum > 0:
+                amt = remaining * (float(a.get("value", 0)) / 100.0)
+                breakdown.append({"bucket": a.get("bucket"), "amount": round(amt, 2)})
+        result = {
+            "income_monthly": round(totals["income_monthly"], 2),
+            "expenses_monthly": round(totals["expenses_monthly"], 2),
+            "surplus_monthly": round(surplus, 2),
+            "breakdown": breakdown,
+        }
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class TransferInstruction(BaseModel):
+    bucket: str
+    source_account_id: Optional[str] = None
+    destination_account_id: Optional[str] = None
+    amount: float
+
+
+@app.post("/api/strategy/apply")
+def strategy_apply(payload: StrategyApplyRequest):
+    try:
+        sim = strategy_simulate(StrategySimulateRequest(owner_type=payload.owner_type, owner_id=payload.owner_id, strategy_id=payload.strategy_id))
+        # load mappings
+        mappings = get_documents("accountmapping", {"owner_type": payload.owner_type, "owner_id": payload.owner_id}, 100)
+        map_by_bucket = {m.get("bucket").lower(): m.get("bank_account_id") for m in mappings}
+        # determine master account
+        source_account_id = None
+        if payload.owner_type == "user":
+            profs = get_documents("userprofile", {"user_id": payload.owner_id}, 1)
+            if profs:
+                source_account_id = profs[0].get("master_salary_account_id")
+        else:
+            profs = get_documents("businessprofile", {"business_id": payload.owner_id}, 1)
+            if profs:
+                source_account_id = profs[0].get("master_income_account_id")
+        # transfers
+        transfers: List[TransferInstruction] = []
+        for item in sim.get("breakdown", []):
+            dest = map_by_bucket.get(str(item.get("bucket", "")).lower())
+            transfers.append(TransferInstruction(bucket=item.get("bucket"), source_account_id=source_account_id, destination_account_id=dest, amount=item.get("amount", 0)))
+        # project balances
+        accounts = get_documents("bankaccount", {}, 100)
+        bal_by_id = {a.get("account_id"): float(a.get("balance", 0)) for a in accounts}
+        projected: Dict[str, float] = dict(bal_by_id)
+        for t in transfers:
+            if t.source_account_id:
+                projected[t.source_account_id] = projected.get(t.source_account_id, 0) - t.amount
+            if t.destination_account_id:
+                projected[t.destination_account_id] = projected.get(t.destination_account_id, 0) + t.amount
+        plan = {
+            "sync_frequency": payload.sync_frequency,
+            "next_run": _next_run_date(payload.sync_frequency),
+            "transfers": [ti.model_dump() for ti in transfers],
+            "projected_balances": {k: round(v, 2) for k, v in projected.items()},
+        }
+        # store plan demo
+        create_document("routingplan", plan)
+        _award_xp(25, "apply_strategy")
+        return plan
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# -------------------- Net worth --------------------
+class Asset(BaseModel):
+    name: str
+    value: float
+
+
+class Liability(BaseModel):
+    name: str
+    value: float
+
+
+class NetWorthSnapshot(BaseModel):
+    owner_type: Literal["user", "business"]
+    owner_id: str
+    date: str
+    assets: List[Asset] = Field(default_factory=list)
+    liabilities: List[Liability] = Field(default_factory=list)
+
+
+@app.post("/api/networth/snapshot")
+def save_networth_snapshot(payload: NetWorthSnapshot):
+    try:
+        inserted = create_document("networthsnapshot", payload)
+        return {"id": inserted}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/networth")
+def list_networth(owner_type: Literal["user", "business"], owner_id: str, limit: int = 100):
+    try:
+        docs = get_documents("networthsnapshot", {"owner_type": owner_type, "owner_id": owner_id}, limit)
+        series = []
+        for d in docs:
+            assets_v = sum(float(a.get("value", 0)) for a in d.get("assets", []))
+            liab_v = sum(float(l.get("value", 0)) for l in d.get("liabilities", []))
+            series.append({
+                "date": d.get("date"),
+                "assets": round(assets_v, 2),
+                "liabilities": round(liab_v, 2),
+                "net_worth": round(assets_v - liab_v, 2),
+            })
+        series.sort(key=lambda x: x.get("date", ""))
+        return {"series": series}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class NetWorthImportPayload(BaseModel):
+    owner_type: Literal["user", "business"]
+    owner_id: str
+    rows: List[Dict[str, str]]  # {date, assets, liabilities}
+
+
+@app.post("/api/networth/import")
+def import_networth(payload: NetWorthImportPayload):
+    try:
+        for r in payload.rows:
+            date = r.get("date")
+            assets = float(r.get("assets", 0))
+            liabilities = float(r.get("liabilities", 0))
+            snap = NetWorthSnapshot(
+                owner_type=payload.owner_type,
+                owner_id=payload.owner_id,
+                date=date,
+                assets=[Asset(name="Total Assets", value=assets)],
+                liabilities=[Liability(name="Total Liabilities", value=liabilities)],
+            )
+            create_document("networthsnapshot", snap)
+        return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# -------------------- Industry insights --------------------
+@app.get("/api/industry/insights")
+def industry_insights(industry: str):
+    ideas = INDUSTRY_SEEDS.get(industry, [])
+    items = [{"title": i, "type": "tip"} for i in ideas]
+    if not items:
+        items = [{"title": "Optimise supplier contracts and review recurring SaaS.", "type": "tip"}]
+    return items
+
+
+# -------------------- CDR mock --------------------
 class CdrStartInput(BaseModel):
     provider: Literal["NAB", "CBA", "WBC", "ANZ", "ING", "AMP"]
 
@@ -432,13 +802,12 @@ def cdr_connect_start(payload: CdrStartInput):
 
 
 class CdrCompleteInput(BaseModel):
-    connection_id: str
+    connection_id: Optional[str] = None
     provider: Literal["NAB", "CBA", "WBC", "ANZ", "ING", "AMP"]
 
 
 @app.post("/api/cdr/connect/complete")
 def cdr_connect_complete(payload: CdrCompleteInput):
-    # Create a bank connection and some sample accounts/txns
     try:
         conn = BankConnection(provider=payload.provider, status="connected", accounts_linked=2)
         create_document("bankconnection", conn)
@@ -460,7 +829,6 @@ def cdr_connect_complete(payload: CdrCompleteInput):
         for t in txns:
             create_document("banktransaction", t)
 
-        # award xp for linking bank
         _award_xp(150, "link_bank")
 
         return {"status": "connected", "accounts": [a.model_dump() for a in accounts]}
@@ -475,7 +843,8 @@ def cdr_accounts(limit: int = 10):
         for d in docs:
             if "_id" in d:
                 d["id"] = str(d.pop("_id"))
-        return docs
+                d.setdefault("number", d.get("number_masked"))
+        return {"accounts": docs}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -490,17 +859,15 @@ def cdr_transactions(account_id: Optional[str] = None, limit: int = 25):
         for d in docs:
             if "_id" in d:
                 d["id"] = str(d.pop("_id"))
-        return docs
+        return {"transactions": docs}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# --------- Gamification endpoints ---------
-
+# -------------------- Gamification endpoints --------------------
 @app.get("/api/gamification/profile")
 def get_gamification_profile():
     profile = _get_latest_profile()
-    # normalise
     profile.setdefault("xp", 0)
     profile.setdefault("level", _compute_level(profile.get("xp", 0)))
     profile.setdefault("badges", [])
@@ -522,6 +889,34 @@ class AwardInput(BaseModel):
 def award_xp(payload: AwardInput):
     profile = _award_xp(payload.amount, payload.reason)
     return profile
+
+
+# -------------------- Exports --------------------
+@app.get("/api/export/routing-plan.csv")
+def export_routing_csv(limit: int = 1):
+    try:
+        plans = get_documents("routingplan", {}, limit)
+        if not plans:
+            return "no data"
+        p = plans[0]
+        rows = ["bucket,source_account_id,destination_account_id,amount"]
+        for t in p.get("transfers", []):
+            rows.append(f"{t.get('bucket')},{t.get('source_account_id')},{t.get('destination_account_id')},{t.get('amount')}")
+        return "\n".join(rows)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/export/networth.csv")
+def export_networth_csv(owner_type: Literal["user", "business"] = "user", owner_id: str = "demo-user"):
+    try:
+        series = list_networth(owner_type=owner_type, owner_id=owner_id).get("series", [])  # type: ignore
+        rows = ["date,assets,liabilities,net_worth"]
+        for s in series:
+            rows.append(f"{s.get('date')},{s.get('assets')},{s.get('liabilities')},{s.get('net_worth')}")
+        return "\n".join(rows)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":
