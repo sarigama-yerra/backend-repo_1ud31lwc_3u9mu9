@@ -12,9 +12,9 @@ Model name is converted to lowercase for the collection name:
 """
 
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List, Dict, Literal
 
-# Example schemas (replace with your own):
+# Example schemas (retain for reference)
 
 class User(BaseModel):
     """
@@ -38,8 +38,28 @@ class Product(BaseModel):
     category: str = Field(..., description="Product category")
     in_stock: bool = Field(True, description="Whether product is in stock")
 
-# Add your own schemas here:
-# --------------------------------------------------
+# Finance Optimizer Schemas
+
+class Debt(BaseModel):
+    name: str = Field(..., description="Debt name e.g., Credit Card")
+    balance: float = Field(..., ge=0)
+    interest_rate_apy: float = Field(..., ge=0, description="Annual interest rate as a percentage, e.g., 19.99 for 19.99%")
+    minimum_payment_monthly: float = Field(0, ge=0)
+
+class Expense(BaseModel):
+    category: str
+    amount_monthly: float = Field(..., ge=0)
+
+class Scenario(BaseModel):
+    """
+    Generic scenario for both individuals and businesses
+    Collection name: "scenario"
+    """
+    name: str = Field(..., description="Friendly name for the scenario")
+    scenario_type: Literal["individual", "business"] = Field(...)
+    inputs: Dict[str, object] = Field(default_factory=dict, description="Arbitrary input parameters used")
+    results: Dict[str, object] = Field(default_factory=dict, description="Computed results snapshot")
+    notes: Optional[str] = None
 
 # Note: The Flames database viewer will automatically:
 # 1. Read these schemas from GET /schema endpoint
