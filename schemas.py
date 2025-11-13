@@ -61,6 +61,20 @@ class Scenario(BaseModel):
     results: Dict[str, object] = Field(default_factory=dict, description="Computed results snapshot")
     notes: Optional[str] = None
 
+class Strategy(BaseModel):
+    """
+    Financial strategy plans for scenarios
+    Collection name: "strategy"
+    """
+    title: str = Field(..., description="Strategy name")
+    audience: Literal["individual", "business"] = Field("individual")
+    kind: Literal["prebuilt", "generated"] = Field("generated")
+    description: Optional[str] = Field(None, description="Short overview")
+    steps: List[str] = Field(default_factory=list, description="Concrete action steps")
+    assumptions: Dict[str, object] = Field(default_factory=dict, description="Inputs used or assumed")
+    estimated_impact: Dict[str, float] = Field(default_factory=dict, description="Key metrics deltas e.g., savings_rate:+0.05")
+    scenario_id: Optional[str] = Field(None, description="Related scenario document id if any")
+
 # Note: The Flames database viewer will automatically:
 # 1. Read these schemas from GET /schema endpoint
 # 2. Use them for document validation when creating/editing

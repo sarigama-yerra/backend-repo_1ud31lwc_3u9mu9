@@ -1,7 +1,39 @@
 INFO:     Will watch for changes in these directories: ['/home/workspace']
 INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-INFO:     Started reloader process [158] using StatReload
-INFO:     Started server process [160]
+INFO:     Started reloader process [253] using StatReload
+INFO:     Started server process [255]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
-INFO:     172.20.0.1:54294 - "HEAD / HTTP/1.1" 405 Method Not Allowed
+INFO:     172.20.0.1:41604 - "HEAD / HTTP/1.1" 405 Method Not Allowed
+INFO:     172.20.0.1:41610 - "POST /api/tax HTTP/1.1" 200 OK
+INFO:     172.20.0.1:41628 - "POST /api/cashflow HTTP/1.1" 200 OK
+INFO:     172.20.0.1:41622 - "GET /api/strategies/prebuilt?audience=individual HTTP/1.1" 200 OK
+INFO:     172.20.0.1:41624 - "POST /api/super HTTP/1.1" 200 OK
+INFO:     172.20.0.1:41628 - "POST /api/super HTTP/1.1" 200 OK
+INFO:     172.20.0.1:41624 - "GET /api/strategies/prebuilt?audience=individual HTTP/1.1" 200 OK
+INFO:     172.20.0.1:41622 - "POST /api/tax HTTP/1.1" 200 OK
+INFO:     172.20.0.1:41610 - "POST /api/cashflow HTTP/1.1" 200 OK
+INFO:     172.20.0.1:41610 - "GET /api/strategies/prebuilt?audience=individual HTTP/1.1" 200 OK
+INFO:     172.20.0.1:41610 - "GET /api/strategies/prebuilt?audience=individual HTTP/1.1" 200 OK
+INFO:     172.20.0.1:41638 - "GET /api/scenarios HTTP/1.1" 200 OK
+INFO:     172.20.0.1:41612 - "GET /api/strategies?audience=individual HTTP/1.1" 200 OK
+INFO:     172.20.0.1:41612 - "GET /api/strategies?audience=individual HTTP/1.1" 200 OK
+INFO:     172.20.0.1:41624 - "GET /api/scenarios HTTP/1.1" 200 OK
+INFO:     172.20.0.1:41612 - "GET /api/strategies?audience=individual HTTP/1.1" 200 OK
+INFO:     172.20.0.1:41612 - "GET /api/strategies?audience=individual HTTP/1.1" 200 OK
+INFO:     172.20.0.1:59046 - "POST /api/cashflow HTTP/1.1" 200 OK
+INFO:     172.20.0.1:59016 - "GET /api/strategies/prebuilt?audience=individual HTTP/1.1" 200 OK
+INFO:     172.20.0.1:59030 - "POST /api/tax HTTP/1.1" 200 OK
+INFO:     172.20.0.1:59064 - "POST /api/super HTTP/1.1" 200 OK
+INFO:     172.20.0.1:59068 - "GET /api/scenarios HTTP/1.1" 200 OK
+INFO:     172.20.0.1:59050 - "GET /api/strategies?audience=individual HTTP/1.1" 200 OK
+INFO:     172.20.0.1:59064 - "GET /api/strategies/prebuilt?audience=individual HTTP/1.1" 200 OK
+INFO:     172.20.0.1:59030 - "POST /api/cashflow HTTP/1.1" 200 OK
+INFO:     172.20.0.1:59016 - "POST /api/super HTTP/1.1" 200 OK
+INFO:     172.20.0.1:59046 - "POST /api/tax HTTP/1.1" 200 OK
+INFO:     172.20.0.1:59068 - "GET /api/strategies?audience=individual HTTP/1.1" 200 OK
+INFO:     172.20.0.1:59050 - "GET /api/scenarios HTTP/1.1" 200 OK
+INFO:     172.20.0.1:59046 - "GET /api/strategies/prebuilt?audience=individual HTTP/1.1" 200 OK
+INFO:     172.20.0.1:59068 - "GET /api/strategies?audience=individual HTTP/1.1" 200 OK
+INFO:     172.20.0.1:59046 - "GET /api/strategies/prebuilt?audience=individual HTTP/1.1" 200 OK
+INFO:     172.20.0.1:59068 - "GET /api/strategies?audience=individual HTTP/1.1" 200 OK
