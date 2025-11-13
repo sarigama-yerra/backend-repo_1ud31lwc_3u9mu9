@@ -75,6 +75,55 @@ class Strategy(BaseModel):
     estimated_impact: Dict[str, float] = Field(default_factory=dict, description="Key metrics deltas e.g., savings_rate:+0.05")
     scenario_id: Optional[str] = Field(None, description="Related scenario document id if any")
 
+# CDR (Banking) Schemas
+
+class BankConnection(BaseModel):
+    """
+    Represents a user's consented bank connection via CDR
+    Collection: "bankconnection"
+    """
+    provider: str = Field(..., description="Bank/provider code, e.g., NAB, CBA, WBC, ANZ")
+    status: Literal["connected", "revoked"] = Field("connected")
+    accounts_linked: int = Field(0)
+
+class BankAccount(BaseModel):
+    """
+    Bank account summary
+    Collection: "bankaccount"
+    """
+    provider: str
+    account_id: str
+    name: str
+    bsb: Optional[str] = None
+    number_masked: str
+    balance: float = 0.0
+
+class BankTransaction(BaseModel):
+    """
+    Bank transaction record
+    Collection: "banktransaction"
+    """
+    provider: str
+    account_id: str
+    txn_id: str
+    date: str
+    description: str
+    amount: float
+    category: Optional[str] = None
+
+# Gamification Schema
+
+class GamificationProfile(BaseModel):
+    """
+    Single-profile gamification tracker
+    Collection: "gamificationprofile" (use one document for now)
+    """
+    xp: int = 0
+    level: int = 1
+    badges: List[str] = Field(default_factory=list)
+    streak_days: int = 0
+    quests: List[Dict[str, object]] = Field(default_factory=list)
+
 # Note: The Flames database viewer will automatically:
 # 1. Read these schemas from GET /schema endpoint
 # 2. Use them for document validation when creating/editing

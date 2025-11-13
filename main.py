@@ -1,11 +1,13 @@
 import os
+import random
+import string
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Literal, Optional, Dict
 
 from database import db, create_document, get_documents
-from schemas import Scenario, Strategy
+from schemas import Scenario, Strategy, BankConnection, BankAccount, BankTransaction, GamificationProfile
 
 app = FastAPI(title="Finance Optimizer AU")
 
@@ -61,6 +63,44 @@ def test_database():
     except Exception as e:
         response["database"] = f"❌ Error: {str(e)[:80]}"
     return response
+
+
+# --- Gamification helpers ---
+
+def _get_latest_profile() -> Dict[str, object]:
+    try:
+        items = get_documents("gamificationprofile", {}, 1)
+        if items:
+            return items[0]
+    except Exception:
+        pass
+    # default profile
+    return {"xp": 0, "level": 1, "badges": [], "streak_days": 0, "quests": []}
+
+
+def _compute_level(xp: int) -> int:
+    # simple level curve: every 200 XP = +1 level
+    return max(1, 1 + xp // 200)
+
+
+def _award_xp(amount: int, reason: str) -> Dict[str, object]:
+    current = _get_latest_profile()
+    xp = int(current.get("xp", 0)) + amount
+    level = _compute_level(xp)
+    badges = list(current.get("badges", []))
+    # simple badge rules
+    if reason == "link_bank" and "Banked Up" not in badges:
+        badges.append("Banked Up")
+    if reason == "save_scenario" and "Planner" not in badges:
+        badges.append("Planner")
+    if reason == "save_strategy" and "Strategist" not in badges:
+        badges.append("Strategist")
+    profile = GamificationProfile(xp=xp, level=level, badges=badges, streak_days=current.get("streak_days", 0), quests=current.get("quests", []))
+    try:
+        create_document("gamificationprofile", profile)
+    except Exception:
+        pass
+    return profile.model_dump()
 
 
 # --- AU Tax Calculators (2024-25 approximations) ---
@@ -155,6 +195,8 @@ def save_scenario(payload: SaveScenarioInput):
     )
     try:
         inserted_id = create_document("scenario", scenario)
+        # award XP for saving scenario
+        _award_xp(50, "save_scenario")
         return {"id": inserted_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -329,6 +371,9 @@ def generate_strategy(payload: GenerateStrategyInput):
     if payload.scenario_id:
         strat["scenario_id"] = payload.scenario_id
 
+    # award small XP for generating
+    _award_xp(10, "generate_strategy")
+
     return strat
 
 
@@ -348,6 +393,7 @@ def save_strategy(payload: SaveStrategyInput):
     doc = Strategy(**payload.model_dump())
     try:
         inserted_id = create_document("strategy", doc)
+        _award_xp(75, "save_strategy")
         return {"id": inserted_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -366,6 +412,116 @@ def list_strategies(limit: int = 50, audience: Optional[Literal["individual", "b
         return docs
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# --------- CDR mock integration (link bank accounts) ---------
+
+class CdrStartInput(BaseModel):
+    provider: Literal["NAB", "CBA", "WBC", "ANZ", "ING", "AMP"]
+
+
+def _gen_id(prefix: str) -> str:
+    return prefix + "_" + ''.join(random.choices(string.ascii_lowercase + string.digits, k=10))
+
+
+@app.post("/api/cdr/connect/start")
+def cdr_connect_start(payload: CdrStartInput):
+    connection_id = _gen_id("cdr")
+    redirect_url = f"https://cdr.mock/consent?connection_id={connection_id}&provider={payload.provider}"
+    return {"connection_id": connection_id, "redirect_url": redirect_url}
+
+
+class CdrCompleteInput(BaseModel):
+    connection_id: str
+    provider: Literal["NAB", "CBA", "WBC", "ANZ", "ING", "AMP"]
+
+
+@app.post("/api/cdr/connect/complete")
+def cdr_connect_complete(payload: CdrCompleteInput):
+    # Create a bank connection and some sample accounts/txns
+    try:
+        conn = BankConnection(provider=payload.provider, status="connected", accounts_linked=2)
+        create_document("bankconnection", conn)
+
+        checking_id = _gen_id("acct")
+        savings_id = _gen_id("acct")
+        accounts = [
+            BankAccount(provider=payload.provider, account_id=checking_id, name="Everyday Account", bsb="083-001", number_masked="••• 123", balance=2450.75),
+            BankAccount(provider=payload.provider, account_id=savings_id, name="High Interest Saver", bsb="083-002", number_masked="••• 789", balance=10250.40),
+        ]
+        for a in accounts:
+            create_document("bankaccount", a)
+
+        txns = [
+            BankTransaction(provider=payload.provider, account_id=checking_id, txn_id=_gen_id("txn"), date="2025-11-01", description="Coffee Shop", amount=-5.5, category="Food & Drink"),
+            BankTransaction(provider=payload.provider, account_id=checking_id, txn_id=_gen_id("txn"), date="2025-11-02", description="Grocery Store", amount=-86.2, category="Groceries"),
+            BankTransaction(provider=payload.provider, account_id=savings_id, txn_id=_gen_id("txn"), date="2025-11-03", description="Interest", amount=8.34, category="Income"),
+        ]
+        for t in txns:
+            create_document("banktransaction", t)
+
+        # award xp for linking bank
+        _award_xp(150, "link_bank")
+
+        return {"status": "connected", "accounts": [a.model_dump() for a in accounts]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/cdr/accounts")
+def cdr_accounts(limit: int = 10):
+    try:
+        docs = get_documents("bankaccount", {}, limit)
+        for d in docs:
+            if "_id" in d:
+                d["id"] = str(d.pop("_id"))
+        return docs
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/cdr/transactions")
+def cdr_transactions(account_id: Optional[str] = None, limit: int = 25):
+    try:
+        query: Dict[str, object] = {}
+        if account_id:
+            query["account_id"] = account_id
+        docs = get_documents("banktransaction", query, limit)
+        for d in docs:
+            if "_id" in d:
+                d["id"] = str(d.pop("_id"))
+        return docs
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --------- Gamification endpoints ---------
+
+@app.get("/api/gamification/profile")
+def get_gamification_profile():
+    profile = _get_latest_profile()
+    # normalise
+    profile.setdefault("xp", 0)
+    profile.setdefault("level", _compute_level(profile.get("xp", 0)))
+    profile.setdefault("badges", [])
+    profile.setdefault("streak_days", 0)
+    profile.setdefault("quests", [
+        {"id": "q1", "title": "Run a tax calc", "xp": 10, "done": False},
+        {"id": "q2", "title": "Save a scenario", "xp": 50, "done": False},
+        {"id": "q3", "title": "Link a bank account", "xp": 150, "done": False},
+    ])
+    return profile
+
+
+class AwardInput(BaseModel):
+    amount: int
+    reason: str
+
+
+@app.post("/api/gamification/award")
+def award_xp(payload: AwardInput):
+    profile = _award_xp(payload.amount, payload.reason)
+    return profile
 
 
 if __name__ == "__main__":
